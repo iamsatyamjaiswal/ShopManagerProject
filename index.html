@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Clothes Shop Billing & Inventory</title>
+<meta name="theme-color" content="#111827" />
+<link rel="manifest" id="dynamic-manifest">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{font-family:Arial;background:#f4f6f8;margin:0}
+header{background:#111827;color:#fff;padding:16px 24px;font-size:22px;font-weight:bold;display:flex;justify-content:space-between}
+.container{padding:20px;max-width:1300px;margin:auto}
+.card{background:#fff;padding:16px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:20px}
+input,select,button{padding:8px;margin:5px;border-radius:6px;border:1px solid #ccc}
+button{background:#2563eb;color:#fff;border:none;cursor:pointer}
+button:hover{background:#1d4ed8}
+table{width:100%;border-collapse:collapse;margin-top:15px}
+th,td{border:1px solid #ddd;padding:10px}
+th{background:#111827;color:#fff}
+.delete{background:#dc2626!important}
+.edit{background:#059669!important}
+.tabs button{background:#374151}
+.tabs button.active{background:#2563eb}
+.dashboard{display:flex;gap:20px;flex-wrap:wrap}
+.dash-box{flex:1;min-width:220px;background:#111827;color:white;padding:15px;border-radius:10px}
+.low-stock{background:#fee2e2}
+.bill-total{font-size:20px;font-weight:bold;margin-top:10px}
+</style>
+</head>
+<body>
+<header>
+🧾 Clothes Shop Billing & Inventory System
+<button onclick="toggleTheme()">Theme</button>
+</header>
+
+<div class="container">
+
+<div class="card dashboard">
+<div class="dash-box" id="todaySale">Today's Sale: ₹0</div>
+<div class="dash-box" id="totalProducts">Products: 0</div>
+<div class="dash-box" id="expenseToday">Today's Expense: ₹0</div>
+</div>
+
+<div class="card tabs">
+<button class="active" onclick="showTab('inventoryTab',this)">Inventory</button>
+<button onclick="showTab('billingTab',this)">Billing</button>
+<button onclick="showTab('expenseTab',this)">Expenses</button>
+<button onclick="showTab('reportTab',this)">Reports</button>
+</div>
+
+<div class="card">
+<h3>Excel Backup / Restore (Auto DB Mode)</h3>
+<input type="file" id="fileInput" accept=".xlsx,.xls" />
+<button onclick="downloadExcel()">⬇ Download Excel Backup</button>
+</div>
+
+<!-- INVENTORY -->
+<div id="inventoryTab">
+<div class="card">
+<h3>Add / Update Inventory</h3>
+<input id="product" placeholder="Product" />
+<input id="category" placeholder="Category" />
+<input id="size" placeholder="Size" />
+<input id="color" placeholder="Color" />
+<input id="price" type="number" placeholder="Selling Price" />
+<input id="stock" type="number" placeholder="Stock" />
+<button onclick="addItem()">Save Product</button>
+<input id="searchBox" placeholder="Search..." oninput="renderInventory()" />
+</div>
+
+<div class="card">
+<table id="inventoryTable">
+<thead>
+<tr>
+<th>Product</th><th>Category</th><th>Size</th><th>Color</th><th>Price</th><th>Stock</th><th>Action</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
+
+<!-- BILLING -->
+<div id="billingTab" style="display:none">
+<div class="card">
+<h3>Create / Edit Bill</h3>
+<input type="date" id="billDate" />
+<input type="time" id="billTime" />
+<input id="customerName" placeholder="Customer Name" />
+<input id="customerMobile" placeholder="Mobile No." />
+<select id="billProduct"></select>
+<input id="billQty" type="number" placeholder="Qty" />
+<input id="billManualAmount" type="number" placeholder="Manual Amount (optional)" />
+<button onclick="addBillItem()">Add Item</button>
+
+<table id="billTable">
+<thead>
+<tr><th>Product</th><th>Qty</th><th>Price</th><th>Amount</th><th>Action</th></tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<div class="bill-total" id="billTotal">Bill Total: ₹0</div>
+<button onclick="saveBill()">Save Bill</button>
+<button onclick="printLastInvoice()">Print Last Invoice</button>
+</div>
+
+<div class="card">
+<h3>Saved Bills</h3>
+<table id="billHistory">
+<thead>
+<tr><th>Date</th><th>Time</th><th>Customer</th><th>Mobile</th><th>Items</th><th>Total</th><th>Action</th></tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
+
+<!-- EXPENSES -->
+<div id="expenseTab" style="display:none">
+<div class="card">
+<h3>Add Shop Expense</h3>
+<input type="date" id="expenseDate" />
+<input id="expenseTitle" placeholder="Expense Name (Rent, Salary...)" />
+<input id="expenseAmount" type="number" placeholder="Amount" />
+<button onclick="addExpense()">Add Expense</button>
+</div>
+
+<div class="card">
+<table id="expenseTable">
+<thead><tr><th>Date</th><th>Expense</th><th>Amount</th><th>Action</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
+
+<!-- REPORTS -->
+<div id="reportTab" style="display:none">
+<div class="card">
+<h3>Daily Sales Summary</h3>
+<table id="reportTable">
+<thead><tr><th>Date</th><th>Total ₹</th></tr></thead>
+<tbody></tbody>
+</table>
+<h3 id="grandTotal"></h3>
+</div>
+
+<div class="card">
+<h3>Monthly Sales Summary</h3>
+<table id="monthlySummaryTable">
+<thead><tr><th>Month</th><th>Total Sales ₹</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+
+<div class="card">
+<h3>Monthly Sales Chart</h3>
+<canvas id="monthlyChart"></canvas>
+</div>
+</div>
+
+</div>
+
+<script>
+let inventory=JSON.parse(localStorage.getItem('inventory')||'[]');
+let bills=JSON.parse(localStorage.getItem('bills')||'[]');
+let expenses=JSON.parse(localStorage.getItem('expenses')||'[]');
+let currentBill=[];
+let editingBillIndex=null;
+let monthlyChart=null;
+
+function saveLocal(){
+localStorage.setItem('inventory',JSON.stringify(inventory));
+localStorage.setItem('bills',JSON.stringify(bills));
+localStorage.setItem('expenses',JSON.stringify(expenses));
+}
+
+function showTab(id,btn){
+document.querySelectorAll('[id$="Tab"]').forEach(t=>t.style.display='none');
+document.getElementById(id).style.display='block';
+document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+btn.classList.add('active');
+}
+
+function renderInventory(){
+const tbody=document.querySelector('#inventoryTable tbody');
+const select=document.getElementById('billProduct');
+select.innerHTML='';
+tbody.innerHTML='';
+const search=(searchBox.value||'').toLowerCase();
+
+inventory.filter(p=>p.Product.toLowerCase().includes(search)).forEach((item,i)=>{
+tbody.innerHTML+=`<tr>
+<td>${item.Product}</td><td>${item.Category}</td><td>${item.Size}</td>
+<td>${item.Color}</td><td>${item.Price}</td><td>${item.Stock}</td>
+<td><button class='edit' onclick='editItem(${i})'>Edit</button>
+<button class='delete' onclick='deleteItem(${i})'>Delete</button></td></tr>`;
+select.innerHTML+=`<option>${item.Product}</option>`;
+});
+
+totalProducts.innerText=`Products: ${inventory.length}`;
+}
+
+function addItem(){
+if(!product.value)return alert('Product required');
+inventory.push({Product:product.value,Category:category.value,Size:size.value,Color:color.value,Price:Number(price.value),Stock:Number(stock.value)});
+document.querySelectorAll('#inventoryTab input').forEach(i=>i.value='');
+saveLocal();renderInventory();
+}
+
+function editItem(i){
+const it=inventory[i];
+product.value=it.Product;category.value=it.Category;size.value=it.Size;color.value=it.Color;price.value=it.Price;stock.value=it.Stock;
+inventory.splice(i,1);saveLocal();renderInventory();
+}
+
+function deleteItem(i){if(confirm('Delete?')){inventory.splice(i,1);saveLocal();renderInventory();}}
+
+// BILLING
+function addBillItem(){
+const product=billProduct.value;
+const qty=Number(billQty.value);
+const manualAmount=Number(billManualAmount.value);
+if(!product||!qty)return alert('Enter product & qty');
+const item=inventory.find(x=>x.Product===product);
+if(!item||item.Stock<qty)return alert('Stock not available');
+const amount=manualAmount>0?manualAmount:item.Price*qty;
+currentBill.push({Product:product,Qty:qty,Price:item.Price,Amount:amount});
+billQty.value='';billManualAmount.value='';
+renderBill();
+}
+
+function renderBill(){
+const tbody=document.querySelector('#billTable tbody');
+tbody.innerHTML='';
+let total=0;
+currentBill.forEach((b,i)=>{
+total+=b.Amount;
+tbody.innerHTML+=`<tr>
+<td>${b.Product}</td><td>${b.Qty}</td><td>${b.Price}</td><td>₹${b.Amount}</td>
+<td><button class='delete' onclick='removeBillItem(${i})'>Remove</button></td></tr>`;
+});
+billTotal.innerText=`Bill Total: ₹${total}`;
+}
+
+function removeBillItem(i){currentBill.splice(i,1);renderBill();}
+
+function saveBill(){
+if(currentBill.length===0)return alert('Add items first');
+const date=billDate.value||new Date().toISOString().split('T')[0];
+const time=billTime.value||new Date().toTimeString().slice(0,5);
+const customer=customerName.value||'Walk-in';
+const mobile=customerMobile.value||'';
+let total=0;
+
+if(editingBillIndex!==null){bills.splice(editingBillIndex,1);editingBillIndex=null;}
+
+currentBill.forEach(b=>{
+const item=inventory.find(x=>x.Product===b.Product);
+item.Stock-=b.Qty;
+total+=b.Amount;
+});
+
+bills.push({Date:date,Time:time,Customer:customer,Mobile:mobile,Items:[...currentBill],Total:total});
+currentBill=[];
+
+saveLocal();
+renderInventory();
+renderBillHistory();
+renderReport();
+alert('Bill Saved Successfully');
+}
+
+function renderBillHistory(){
+const tbody=document.querySelector('#billHistory tbody');
+tbody.innerHTML='';
+bills.forEach((b,i)=>{
+const items=b.Items.map(it=>`${it.Product}(${it.Qty})`).join(', ');
+tbody.innerHTML+=`<tr>
+<td>${b.Date}</td><td>${b.Time}</td><td>${b.Customer}</td><td>${b.Mobile||''}</td>
+<td>${items}</td><td>₹${b.Total}</td>
+<td><button class='edit' onclick='editBill(${i})'>Edit</button></td></tr>`;
+});
+}
+
+function editBill(i){
+const bill=bills[i];
+currentBill=[...bill.Items];
+billDate.value=bill.Date;
+billTime.value=bill.Time;
+customerName.value=bill.Customer;
+customerMobile.value=bill.Mobile||'';
+editingBillIndex=i;
+renderBill();
+showTab('billingTab',document.querySelectorAll('.tabs button')[1]);
+}
+
+// EXPENSES
+function addExpense(){
+const date=expenseDate.value||new Date().toISOString().split('T')[0];
+const title=expenseTitle.value;
+const amount=Number(expenseAmount.value);
+if(!title||!amount)return alert('Enter expense');
+expenses.push({Date:date,Title:title,Amount:amount});
+expenseTitle.value='';expenseAmount.value='';
+saveLocal();renderExpenses();renderReport();
+}
+
+function renderExpenses(){
+const tbody=document.querySelector('#expenseTable tbody');
+tbody.innerHTML='';
+expenses.forEach((e,i)=>{
+tbody.innerHTML+=`<tr>
+<td>${e.Date}</td><td>${e.Title}</td><td>₹${e.Amount}</td>
+<td><button class='delete' onclick='deleteExpense(${i})'>Delete</button></td></tr>`;
+});
+}
+
+function deleteExpense(i){expenses.splice(i,1);saveLocal();renderExpenses();renderReport();}
+
+// REPORT
+function renderReport(){
+const dailyMap={};
+const monthlyMap={};
+let todaySaleAmt=0;
+let todayExpenseAmt=0;
+const todayDate=new Date().toISOString().split('T')[0];
+
+bills.forEach(b=>{
+dailyMap[b.Date]=(dailyMap[b.Date]||0)+b.Total;
+const month=b.Date.slice(0,7);
+monthlyMap[month]=(monthlyMap[month]||0)+b.Total;
+if(b.Date===todayDate)todaySaleAmt+=b.Total;
+});
+
+expenses.forEach(e=>{
+if(e.Date===todayDate)todayExpenseAmt+=e.Amount;
+});
+
+// Daily table
+const tbody=document.querySelector('#reportTable tbody');
+tbody.innerHTML='';
+let grand=0;
+Object.keys(dailyMap).forEach(d=>{
+grand+=dailyMap[d];
+tbody.innerHTML+=`<tr><td>${d}</td><td>₹${dailyMap[d]}</td></tr>`;
+});
+
+todaySale.innerText=`Today's Sale: ₹${todaySaleAmt}`;
+expenseToday.innerText=`Today's Expense: ₹${todayExpenseAmt}`;
+grandTotal.innerText=`Total Sales: ₹${grand}`;
+
+// Monthly summary table
+const mbody=document.querySelector('#monthlySummaryTable tbody');
+mbody.innerHTML='';
+Object.keys(monthlyMap).sort().forEach(m=>{
+mbody.innerHTML+=`<tr><td>${m}</td><td>₹${monthlyMap[m]}</td></tr>`;
+});
+
+// Monthly chart
+const labels=Object.keys(monthlyMap);
+const data=Object.values(monthlyMap);
+if(monthlyChart)monthlyChart.destroy();
+monthlyChart=new Chart(document.getElementById('monthlyChart'),{
+ type:'bar',
+ data:{labels:labels,datasets:[{label:'Monthly Sales ₹',data:data}]}
+});
+}
+
+// AUTO LOAD EXCEL FROM SAME DIRECTORY (GitHub + Incognito Safe)
+async function autoLoadExcel(){
+ try{
+   // always fetch fresh file (important for incognito + GitHub cache)
+   const response = await fetch('./ShopData.xlsx', { cache: 'no-store' });
+   if(!response.ok){
+     console.log('Excel file not found in directory');
+     return false;
+   }
+
+   const arrayBuffer = await response.arrayBuffer();
+   const data = new Uint8Array(arrayBuffer);
+   const wb = XLSX.read(data,{type:'array'});
+
+   inventory = XLSX.utils.sheet_to_json(wb.Sheets['Inventory']||wb.Sheets[wb.SheetNames[0]]);
+   bills = wb.Sheets['Bills'] ? XLSX.utils.sheet_to_json(wb.Sheets['Bills']) : [];
+   expenses = wb.Sheets['Expenses'] ? XLSX.utils.sheet_to_json(wb.Sheets['Expenses']) : [];
+
+   saveLocal();
+   console.log('Excel auto-loaded from same directory');
+   return true;
+ }catch(err){
+   console.log('Auto Excel load failed:', err.message);
+   return false;
+ }
+}
+
+// APP INITIALIZATION (wait for Excel load first)
+async function initApp(){
+  await autoLoadExcel();
+  renderInventory();
+  renderBillHistory();
+  renderExpenses();
+  renderReport();
+}
+
+initApp();
+
+function downloadExcel(){
+const wb=XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(inventory),'Inventory');
+XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(bills),'Bills');
+XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(expenses),'Expenses');
+XLSX.writeFile(wb,'ShopData.xlsx');
+}
+
+function toggleTheme(){document.body.style.background=document.body.style.background==='#111827'?'#f4f6f8':'#111827';}
+
+renderInventory();
+renderBillHistory();
+renderExpenses();
+renderReport();
+
+// ================= PWA INSTALLABLE MODE =================
+
+// Create manifest dynamically
+const manifestData = {
+  name: "Clothes Shop Manager",
+  short_name: "ShopManager",
+  start_url: ".",
+  display: "standalone",
+  background_color: "#111827",
+  theme_color: "#111827",
+  icons: []
+};
+const manifestBlob = new Blob([JSON.stringify(manifestData)], {type: 'application/json'});
+const manifestURL = URL.createObjectURL(manifestBlob);
+document.getElementById('dynamic-manifest').setAttribute('href', manifestURL);
+
+// Register Service Worker for offline usage (FIXED)
+// IMPORTANT: Service workers cannot be registered from Blob URLs.
+// Create a separate file named 'sw.js' in the same directory as index.html
+// and GitHub Pages will allow it.
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js')
+    .then(()=> console.log('PWA Service Worker Registered'))
+    .catch(err=> console.log('Service Worker skipped:', err.message));
+}
+
+</script>
+</body>
+</html>
