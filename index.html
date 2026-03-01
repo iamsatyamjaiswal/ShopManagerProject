@@ -293,6 +293,7 @@ tbody.innerHTML='';
 bills.forEach((b,i)=>{
 // SAFETY: Excel-imported bills may not contain Items array
 const safeItems = Array.isArray(b.Items) ? b.Items : [];
+currentBill=[...safeItems];
 const items = safeItems.map(it=>`${it.Product||''}(${it.Qty||0})`).join(', ');
 
 tbody.innerHTML+=`<tr>
