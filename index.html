@@ -6,8 +6,9 @@
 <title>Clothes Shop Billing & Inventory</title>
 <meta name="theme-color" content="#111827" />
 <link rel="manifest" id="dynamic-manifest">
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Load libraries locally to avoid Tracking Prevention blocking -->
+<script src="xlsx.full.min.js"></script>
+<script src="chart.umd.min.js"></script>
 <style>
 body{font-family:Arial;background:#f4f6f8;margin:0}
 header{background:#111827;color:#fff;padding:16px 24px;font-size:22px;font-weight:bold;display:flex;justify-content:space-between}
@@ -171,6 +172,18 @@ let currentBill=[];
 let editingBillIndex=null;
 let monthlyChart=null;
 
+// Ensure Bills structure is always valid (GitHub + Excel safe)
+function normalizeBills(){
+  bills = (bills || []).map(b => ({
+    Date: b?.Date || '',
+    Time: b?.Time || '',
+    Customer: b?.Customer || 'Walk-in',
+    Mobile: b?.Mobile || '',
+    Items: Array.isArray(b?.Items) ? b.Items : [],
+    Total: Number(b?.Total || 0)
+  }));
+}
+
 function saveLocal(){
 localStorage.setItem('inventory',JSON.stringify(inventory));
 localStorage.setItem('bills',JSON.stringify(bills));
@@ -207,16 +220,16 @@ function addItem(){
 if(!product.value)return alert('Product required');
 inventory.push({Product:product.value,Category:category.value,Size:size.value,Color:color.value,Price:Number(price.value),Stock:Number(stock.value)});
 document.querySelectorAll('#inventoryTab input').forEach(i=>i.value='');
-saveLocal();renderInventory();
+saveLocal();autoSaveExcel();renderInventory();
 }
 
 function editItem(i){
 const it=inventory[i];
 product.value=it.Product;category.value=it.Category;size.value=it.Size;color.value=it.Color;price.value=it.Price;stock.value=it.Stock;
-inventory.splice(i,1);saveLocal();renderInventory();
+inventory.splice(i,1);saveLocal();autoSaveExcel();renderInventory();
 }
 
-function deleteItem(i){if(confirm('Delete?')){inventory.splice(i,1);saveLocal();renderInventory();}}
+function deleteItem(i){if(confirm('Delete?')){inventory.splice(i,1);saveLocal();autoSaveExcel();renderInventory();}}
 
 // BILLING
 function addBillItem(){
@@ -266,7 +279,7 @@ total+=b.Amount;
 bills.push({Date:date,Time:time,Customer:customer,Mobile:mobile,Items:[...currentBill],Total:total});
 currentBill=[];
 
-saveLocal();
+saveLocal();autoSaveExcel();
 renderInventory();
 renderBillHistory();
 renderReport();
@@ -276,21 +289,26 @@ alert('Bill Saved Successfully');
 function renderBillHistory(){
 const tbody=document.querySelector('#billHistory tbody');
 tbody.innerHTML='';
+
 bills.forEach((b,i)=>{
-const items=b.Items.map(it=>`${it.Product}(${it.Qty})`).join(', ');
+// SAFETY: Excel-imported bills may not contain Items array
+const safeItems = Array.isArray(b.Items) ? b.Items : [];
+const items = safeItems.map(it=>`${it.Product||''}(${it.Qty||0})`).join(', ');
+
 tbody.innerHTML+=`<tr>
-<td>${b.Date}</td><td>${b.Time}</td><td>${b.Customer}</td><td>${b.Mobile||''}</td>
-<td>${items}</td><td>₹${b.Total}</td>
+<td>${b.Date||''}</td><td>${b.Time||''}</td><td>${b.Customer||''}</td><td>${b.Mobile||''}</td>
+<td>${items}</td><td>₹${b.Total||0}</td>
 <td><button class='edit' onclick='editBill(${i})'>Edit</button></td></tr>`;
 });
 }
 
 function editBill(i){
-const bill=bills[i];
-currentBill=[...bill.Items];
-billDate.value=bill.Date;
-billTime.value=bill.Time;
-customerName.value=bill.Customer;
+const bill=bills[i]||{};
+const safeItems = Array.isArray(bill.Items) ? bill.Items : [];
+currentBill=[...safeItems];
+billDate.value=bill.Date||'';
+billTime.value=bill.Time||'';
+customerName.value=bill.Customer||'';
 customerMobile.value=bill.Mobile||'';
 editingBillIndex=i;
 renderBill();
@@ -305,7 +323,7 @@ const amount=Number(expenseAmount.value);
 if(!title||!amount)return alert('Enter expense');
 expenses.push({Date:date,Title:title,Amount:amount});
 expenseTitle.value='';expenseAmount.value='';
-saveLocal();renderExpenses();renderReport();
+saveLocal();autoSaveExcel();renderExpenses();renderReport();
 }
 
 function renderExpenses(){
@@ -318,7 +336,7 @@ tbody.innerHTML+=`<tr>
 });
 }
 
-function deleteExpense(i){expenses.splice(i,1);saveLocal();renderExpenses();renderReport();}
+function deleteExpense(i){expenses.splice(i,1);saveLocal();autoSaveExcel();renderExpenses();renderReport();}
 
 // REPORT
 function renderReport(){
@@ -372,7 +390,12 @@ monthlyChart=new Chart(document.getElementById('monthlyChart'),{
 // AUTO LOAD EXCEL FROM SAME DIRECTORY (GitHub + Incognito Safe)
 async function autoLoadExcel(){
  try{
-   // always fetch fresh file (important for incognito + GitHub cache)
+   // Excel auto-load works ONLY on http/https (not file:// or sandbox previews)
+   if(!location.protocol.startsWith('http')){
+     console.log('Auto Excel load skipped (not running on http/https)');
+     return false;
+   }
+
    const response = await fetch('./ShopData.xlsx', { cache: 'no-store' });
    if(!response.ok){
      console.log('Excel file not found in directory');
@@ -385,6 +408,16 @@ async function autoLoadExcel(){
 
    inventory = XLSX.utils.sheet_to_json(wb.Sheets['Inventory']||wb.Sheets[wb.SheetNames[0]]);
    bills = wb.Sheets['Bills'] ? XLSX.utils.sheet_to_json(wb.Sheets['Bills']) : [];
+
+   // NORMALIZE bills loaded from Excel (older backups may not contain Items array)
+   bills = bills.map(b => ({
+     Date: b.Date || '',
+     Time: b.Time || '',
+     Customer: b.Customer || 'Walk-in',
+     Mobile: b.Mobile || '',
+     Items: Array.isArray(b.Items) ? b.Items : [],
+     Total: Number(b.Total || 0)
+   }));
    expenses = wb.Sheets['Expenses'] ? XLSX.utils.sheet_to_json(wb.Sheets['Expenses']) : [];
 
    saveLocal();
@@ -398,6 +431,7 @@ async function autoLoadExcel(){
 
 // APP INITIALIZATION (wait for Excel load first)
 async function initApp(){
+  normalizeBills();
   await autoLoadExcel();
   renderInventory();
   renderBillHistory();
@@ -406,6 +440,20 @@ async function initApp(){
 }
 
 initApp();
+
+// AUTO SAVE EXCEL (auto backup on every change)
+function autoSaveExcel(){
+ try{
+   const wb=XLSX.utils.book_new();
+   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(inventory),'Inventory');
+   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(bills),'Bills');
+   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(expenses),'Expenses');
+   XLSX.writeFile(wb,'ShopData_AutoBackup.xlsx');
+   console.log('Auto Excel backup created');
+ }catch(err){
+   console.log('Auto Excel backup failed:',err.message);
+ }
+}
 
 function downloadExcel(){
 const wb=XLSX.utils.book_new();
@@ -443,10 +491,13 @@ document.getElementById('dynamic-manifest').setAttribute('href', manifestURL);
 // Create a separate file named 'sw.js' in the same directory as index.html
 // and GitHub Pages will allow it.
 
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+// Register service worker ONLY when allowed by browser (https or localhost)
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js')
     .then(()=> console.log('PWA Service Worker Registered'))
     .catch(err=> console.log('Service Worker skipped:', err.message));
+} else {
+  console.log('Service Worker skipped: invalid environment');
 }
 
 </script>
