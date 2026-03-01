@@ -5,29 +5,31 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Shop Manager</title>
 
+<!-- Supabase -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="xlsx.full.min.js"></script>
-<script src="chart.umd.min.js"></script>
 
 <style>
 body{font-family:Arial;margin:0;background:#f4f6f8}
 header{background:#111827;color:#fff;padding:15px;font-size:22px}
 .container{padding:20px}
 .card{background:#fff;padding:15px;margin-bottom:15px;border-radius:8px}
-button{padding:8px 12px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer}
-.delete{background:#dc2626}
-.edit{background:#059669}
+button{padding:8px 12px;background:#2563eb;color:#fff;border:none;border-radius:6px}
 </style>
 </head>
 
 <body>
 
-<!-- LOGIN -->
-<div id="loginScreen" style="position:fixed;inset:0;background:#111827;display:flex;align-items:center;justify-content:center;">
-<div style="background:white;padding:30px;border-radius:10px;width:300px;text-align:center">
+<!-- LOGIN SCREEN -->
+<div id="loginScreen"
+style="position:fixed;inset:0;background:#111827;
+display:flex;align-items:center;justify-content:center;z-index:999">
+
+<div style="background:#fff;padding:30px;border-radius:10px;width:300px;text-align:center">
 <h3>Shop Login</h3>
+
 <input id="loginUser" placeholder="Email"><br><br>
 <input id="loginPass" type="password" placeholder="Password"><br><br>
+
 <button onclick="loginUserAuth()">Login</button>
 <p id="loginError" style="color:red"></p>
 </div>
@@ -36,33 +38,10 @@ button{padding:8px 12px;background:#2563eb;color:#fff;border:none;border-radius:
 <header>🧾 Clothes Shop Manager</header>
 
 <div class="container">
-
 <div class="card">
-<h3>Add Product</h3>
-<input id="product" placeholder="Product">
-<input id="price" type="number" placeholder="Price">
-<input id="stock" type="number" placeholder="Stock">
-<button onclick="addItem()">Save</button>
+<h3>Welcome</h3>
+<p>Login successful — app ready.</p>
 </div>
-
-<div class="card">
-<h3>Inventory</h3>
-<table border="1" width="100%">
-<thead><tr><th>Product</th><th>Price</th><th>Stock</th></tr></thead>
-<tbody id="inventoryBody"></tbody>
-</table>
-</div>
-
-<div class="card">
-<h3>Create Bill</h3>
-<select id="billProduct"></select>
-<input id="billQty" type="number" placeholder="Qty">
-<button onclick="addBillItem()">Add</button>
-
-<div id="billItems"></div>
-<button onclick="saveBill()">Save Bill</button>
-</div>
-
 </div>
 
 <script>
@@ -71,164 +50,74 @@ button{padding:8px 12px;background:#2563eb;color:#fff;border:none;border-radius:
 const SUPABASE_URL="https://ikdtnmcgdezcyplygywa.supabase.co";
 const SUPABASE_KEY="sb_publishable_-H2eKdwodYNDRU88G8pjjA_DAaN30AC";
 
-const supabase=window.supabase.createClient(
-SUPABASE_URL,SUPABASE_KEY);
+const supabase = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
 
-/* ================= STATE ================= */
+/* ================= ROLE ================= */
 
-let inventory=[];
-let currentBill=[];
 let USER_ROLE="staff";
-
-/* ================= LOGIN ================= */
-
-async function loginUserAuth(){
-
-const email=loginUser.value;
-const password=loginPass.value;
-
-const {data,error}=await supabase.auth.signInWithPassword({
-email,password});
-
-if(error){
-loginError.innerText="Invalid login";
-return;
-}
-
-await loadUserRole(data.user.id);
-
-loginScreen.style.display="none";
-initApp();
-}
-
-/* SESSION RESTORE */
-
-async function checkSession(){
-const {data}=await supabase.auth.getSession();
-
-if(data.session){
-await loadUserRole(data.session.user.id);
-loginScreen.style.display="none";
-initApp();
-}
-}
-checkSession();
-
-/* ================= ROLES ================= */
 
 async function loadUserRole(uid){
 
-const {data}=await supabase
-.from("user_roles")
-.select("role")
-.eq("user_id",uid)
-.single();
+ const { data } = await supabase
+   .from('user_roles')
+   .select('role')
+   .eq('user_id', uid)
+   .single();
 
-USER_ROLE=data?.role||"staff";
-applyPermissions();
+ USER_ROLE = data?.role || "staff";
+
+ console.log("Logged in as:", USER_ROLE);
 }
 
-function applyPermissions(){
-if(USER_ROLE==="staff"){
-document.querySelectorAll('.delete,.edit')
-.forEach(b=>b.style.display="none");
-}
-}
+/* ================= LOGIN ================= */
+/* IMPORTANT → GLOBAL FUNCTION */
+window.loginUserAuth = async function(){
 
-/* ================= INIT ================= */
+ const email = document.getElementById("loginUser").value;
+ const password = document.getElementById("loginPass").value;
 
-async function initApp(){
-await loadInventory();
-renderInventory();
-}
+ const { data, error } =
+   await supabase.auth.signInWithPassword({
+     email,
+     password
+   });
 
-/* ================= INVENTORY ================= */
+ if(error){
+   document.getElementById("loginError").innerText = error.message;
+   return;
+ }
 
-async function loadInventory(){
-const {data}=await supabase.from("inventory").select("*");
-inventory=data||[];
-}
+ await loadUserRole(data.user.id);
 
-async function addItem(){
+ document.getElementById("loginScreen").style.display="none";
 
-const obj={
-product:product.value,
-price:Number(price.value),
-stock:Number(stock.value)
+ initApp();
 };
 
-await supabase.from("inventory").insert([obj]);
+/* ================= SESSION RESTORE ================= */
 
-inventory.push(obj);
-renderInventory();
+async function checkSession(){
 
-product.value="";
-price.value="";
-stock.value="";
+ const { data } = await supabase.auth.getSession();
+
+ if(data.session){
+   await loadUserRole(data.session.user.id);
+   document.getElementById("loginScreen").style.display="none";
+   initApp();
+ }
 }
 
-function renderInventory(){
+checkSession();
 
-const body=document.getElementById("inventoryBody");
-const select=document.getElementById("billProduct");
+/* ================= APP START ================= */
 
-body.innerHTML="";
-select.innerHTML="";
-
-inventory.forEach(p=>{
-body.innerHTML+=`
-<tr>
-<td>${p.product}</td>
-<td>${p.price}</td>
-<td>${p.stock}</td>
-</tr>`;
-
-select.innerHTML+=`<option>${p.product}</option>`;
-});
+function initApp(){
+ console.log("App Started ✅");
 }
 
-/* ================= BILLING ================= */
-
-function addBillItem(){
-
-const prod=billProduct.value;
-const qty=Number(billQty.value);
-
-const item=inventory.find(x=>x.product===prod);
-
-currentBill.push({
-product:prod,
-qty:qty,
-amount:item.price*qty
-});
-
-renderBill();
-}
-
-function renderBill(){
-billItems.innerHTML=currentBill.map(
-b=>`${b.product} x ${b.qty} = ₹${b.amount}`
-).join("<br>");
-}
-
-async function saveBill(){
-
-let total=currentBill.reduce((s,x)=>s+x.amount,0);
-
-await supabase.from("bills").insert([{
-bill_date:new Date(),
-customer:"Walk-in",
-total:total,
-items:currentBill
-}]);
-
-alert("Bill Saved (Cloud)");
-
-currentBill=[];
-renderBill();
-}
-
-/* ========================================= */
 </script>
 
 </body>
